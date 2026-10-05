@@ -8,7 +8,7 @@ from openai import APIConnectionError, APIStatusError, OpenAI
 
 from cinedata import config
 from cinedata.cache import AnswerCache
-from cinedata.db import CineDB, UnsafeQueryError
+from cinedata.db import CineDB, QueryResult, UnsafeQueryError
 from cinedata.prompts import SYSTEM_PROMPT
 
 log = logging.getLogger(__name__)
@@ -46,6 +46,7 @@ class AgentAnswer:
     model: str | None = None
     llm_calls: int = 0
     cached: bool = False
+    result: QueryResult | None = None  # resultado da última consulta bem-sucedida (para gráficos)
 
 
 class CineDataAgent:
@@ -93,9 +94,10 @@ class CineDataAgent:
         raise AllModelsFailedError(f"Todos os modelos falharam. Último erro: {last_error}")
 
     # ---------- Ferramenta ----------
-    def _run_sql(self, sql: str) -> str:
+    def _run_sql(self, sql: str, out: AgentAnswer) -> str:
         try:
             result = self.db.run(sql)
+            out.result = result
             return json.dumps(result.to_payload(), ensure_ascii=False, default=str)
         except (UnsafeQueryError, TimeoutError) as exc:
             return json.dumps({"error": f"Consulta bloqueada: {exc}"}, ensure_ascii=False)
@@ -130,7 +132,7 @@ class CineDataAgent:
                     sql = ""
                 out.queries.append(sql)
                 log.info("SQL: %s", sql)
-                messages.append({"role": "tool", "tool_call_id": call.id, "content": self._run_sql(sql)})
+                messages.append({"role": "tool", "tool_call_id": call.id, "content": self._run_sql(sql, out)})
         else:
             out.answer = "Não consegui chegar a uma resposta dentro do limite de passos. Tente reformular."
 
