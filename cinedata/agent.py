@@ -148,5 +148,12 @@ class CineDataAgent:
             self.cache.set(question, {"answer": out.answer, "queries": out.queries, "model": out.model})
         return out
 
+    def daily_usage(self) -> dict | None:
+        """Requisições a modelos gratuitos usadas hoje ({used, limit, remaining}). Não consome cota."""
+        try:
+            return self.client.get("/key", cast_to=object)["data"]["free_model_daily_requests"]
+        except Exception:
+            return None
+
     def reset(self):
         self.history.clear()
