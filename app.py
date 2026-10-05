@@ -20,10 +20,25 @@ EXAMPLES = [
     "Filmes mais avaliados pelos usuários",
 ]
 
+AVATARS = {"user": "🍿", "assistant": "🎬"}
+
 
 @st.cache_resource
 def get_db() -> CineDB:
     return CineDB()
+
+
+@st.cache_data(show_spinner=False)
+def catalog_stats() -> dict:
+    """Números do catálogo para os cartões do topo (direto do banco, sem usar o LLM)."""
+    db = get_db()
+    one = lambda sql: db.run(sql).rows[0][0]
+    return {
+        "Filmes": f"{one('SELECT COUNT(*) FROM dim_movies'):,}".replace(",", "."),
+        "Gêneros": one("SELECT COUNT(*) FROM dim_genres"),
+        "Produtoras": f"{one('SELECT COUNT(*) FROM dim_companies'):,}".replace(",", "."),
+        "Período": one("SELECT MIN(ano_lancamento) || '–' || MAX(ano_lancamento) FROM dim_movies"),
+    }
 
 
 def get_agent() -> CineDataAgent:
@@ -55,10 +70,10 @@ def render_chart(df: pd.DataFrame):
     x, y = df.columns[0], numeric[0]
     data = df[[x, y]].dropna()
     if pd.api.types.is_integer_dtype(data[x]) and data[x].between(1900, 2100).all():
-        st.line_chart(data.set_index(x)[y])  # série temporal (ex.: ano)
+        st.line_chart(data, x=x, y=y, color="#E50914")  # série temporal (ex.: ano)
     elif not pd.api.types.is_numeric_dtype(data[x]):
         data = data.drop_duplicates(subset=x)
-        st.bar_chart(data, x=x, y=y, horizontal=True, sort=f"-{y}")
+        st.bar_chart(data, x=x, y=y, horizontal=True, sort=f"-{y}", color="#E50914")
 
 
 def render_answer(ans):
@@ -79,20 +94,20 @@ with st.sidebar:
     st.title("🎬 CineData Analyst")
     st.write("Pergunte em português sobre o catálogo de filmes. O agente gera o SQL, consulta a "
              "camada Gold (somente leitura) e explica o resultado.")
+    usage_slot = st.empty()  # preenchido no fim do script, depois de a pergunta ser respondida
     st.subheader("Exemplos")
     for ex in EXAMPLES:
         if st.button(ex, width="stretch"):
             st.session_state.pending = ex
+            st.rerun()
     st.divider()
     if st.button("🧹 Nova conversa", width="stretch"):
         st.session_state.messages = []
         if "agent" in st.session_state:
             st.session_state.agent.reset()
         st.rerun()
-    st.caption("Plano gratuito do OpenRouter: 50 requisições/dia (~2–3 por pergunta). "
-               "Perguntas repetidas vêm do cache.")
-
-st.header("Converse com os dados do CineData")
+    st.caption("Plano gratuito do OpenRouter: 50 requisições/dia (~2–3 por pergunta), "
+               "zera às 21h (Brasília). Perguntas repetidas vêm do cache.")
 
 try:
     agent = get_agent()
@@ -101,21 +116,35 @@ except (RuntimeError, FileNotFoundError) as exc:
     st.stop()
 
 st.session_state.setdefault("messages", [])
+question = st.chat_input("Ex.: Qual gênero tem a maior margem de lucro média?")
+question = question or st.session_state.pop("pending", None)
+
+st.markdown("## 🎬 Converse com os dados do :red[CineData]")
+for col, (label, value) in zip(st.columns(4), catalog_stats().items()):
+    col.metric(label, value, border=True)
+
+if not st.session_state.messages and not question:
+    # Tela de boas-vindas: perguntas de exemplo no centro da página.
+    st.markdown("#### O que você quer descobrir sobre o catálogo?")
+    st.caption("Escolha um exemplo ou digite sua pergunta no campo abaixo.")
+    cols = st.columns(3)
+    for i, ex in enumerate(EXAMPLES):
+        if cols[i % 3].button(ex, key=f"welcome_{i}", width="stretch"):
+            st.session_state.pending = ex
+            st.rerun()
+
 for msg in st.session_state.messages:
-    with st.chat_message(msg["role"]):
+    with st.chat_message(msg["role"], avatar=AVATARS[msg["role"]]):
         if msg["role"] == "user":
             st.markdown(msg["content"])
         else:
             render_answer(msg["content"])
 
-question = st.chat_input("Ex.: Qual gênero tem a maior margem de lucro média?")
-question = question or st.session_state.pop("pending", None)
-
 if question:
     st.session_state.messages.append({"role": "user", "content": question})
-    with st.chat_message("user"):
+    with st.chat_message("user", avatar=AVATARS["user"]):
         st.markdown(question)
-    with st.chat_message("assistant"):
+    with st.chat_message("assistant", avatar=AVATARS["assistant"]):
         try:
             with st.spinner("Consultando o catálogo... (modelos gratuitos podem levar até 1 min)"):
                 ans = agent.ask(question)
@@ -127,3 +156,17 @@ if question:
             st.stop()
         render_answer(ans)
     st.session_state.messages.append({"role": "assistant", "content": ans})
+
+
+def render_usage(slot, usage: dict | None):
+    if not usage:
+        return
+    used, limit = usage.get("used", 0), usage.get("limit") or 50
+    with slot.container():
+        left, right = st.columns([3, 1])
+        left.caption("Requisições hoje")
+        right.caption(f"**{used}/{limit}**")
+        st.progress(min(used / limit, 1.0))
+
+
+render_usage(usage_slot, agent.daily_usage())
