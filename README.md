@@ -40,6 +40,8 @@ pergunta ──► LLM (prompt com esquema + regras de negócio)
 
 - **Interface visual e gráficos**: chat no navegador (Streamlit) que mostra a resposta, um gráfico gerado
   automaticamente a partir do resultado (barras para rankings e linha para séries por ano), o SQL executado e a tabela de dados.
+  Tema escuro com destaque vermelho, cartões com os números do catálogo e uma barra com as
+  requisições do dia usadas no OpenRouter (consultar esse uso não gasta cota).
 - **Guardrails em 3 camadas**: o banco é aberto em modo `ro`, a consulta precisa ser um único `SELECT`/`WITH`
   sem comandos de escrita, e um *authorizer* do SQLite nega qualquer operação que não seja leitura.
   Há ainda um timeout por consulta e um limite de linhas enviadas ao LLM. Perguntas fora do tema são recusadas.
