@@ -13,7 +13,7 @@ gerando e executando consultas SQL **somente leitura** sobre a camada Gold (`cin
 | LLM | Modelos gratuitos do OpenRouter (`openrouter/free` + fallback para outros `:free`) |
 | Framework de agente | Loop próprio de *tool calling* com o SDK `openai` (API compatível do OpenRouter) |
 | Banco | SQLite (`cinerocket.db`, 10 tabelas do modelo dimensional) |
-| Interface | CLI no terminal (pergunta única ou modo conversa) |
+| Interface | Chat web com Streamlit (com gráficos) + CLI no terminal |
 
 ## Como funciona
 
@@ -32,11 +32,14 @@ pergunta ──► LLM (prompt com esquema + regras de negócio)
 - **`cinedata/agent.py`**: loop do agente (até 5 chamadas ao LLM por pergunta), fallback entre modelos e memória.
 - **`cinedata/db.py`**: execução segura das consultas.
 - **`cinedata/cache.py`**: cache de respostas em disco.
+- **`app.py`**: interface web de chat (Streamlit), com gráfico automático e SQL/dados em uma seção expansível.
 - **`main.py`**: CLI.
 - **`eval/`**: conjunto de avaliação com as perguntas do enunciado e o SQL esperado.
 
 ### Funcionalidades extras
 
+- **Interface visual e gráficos**: chat no navegador (Streamlit) que mostra a resposta, um gráfico gerado
+  automaticamente a partir do resultado (barras para rankings e linha para séries por ano), o SQL executado e a tabela de dados.
 - **Guardrails em 3 camadas**: o banco é aberto em modo `ro`, a consulta precisa ser um único `SELECT`/`WITH`
   sem comandos de escrita, e um *authorizer* do SQLite nega qualquer operação que não seja leitura.
   Há ainda um timeout por consulta e um limite de linhas enviadas ao LLM. Perguntas fora do tema são recusadas.
@@ -85,13 +88,21 @@ cp .env.example .env
 
 ### 4. Rodar
 
-Pergunta única:
+**Interface web (recomendado):**
+
+```bash
+streamlit run app.py
+```
+
+Abre em http://localhost:8501. Há perguntas de exemplo na barra lateral e o botão "Nova conversa" limpa a memória.
+
+**Terminal**, com pergunta única:
 
 ```bash
 python main.py "Top 10 filmes com maior receita em R$"
 ```
 
-Modo conversa (com memória; `/nova` limpa o contexto, `sair` encerra):
+Ou no modo conversa do terminal (com memória; `/nova` limpa o contexto, `sair` encerra):
 
 ```bash
 python main.py
